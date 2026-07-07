@@ -27,6 +27,41 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
+function buildBalancesUrl(
+  base: string,
+  address: string,
+  nextKey?: string | null,
+): string {
+  const path = `${base}/cosmos/bank/v1beta1/balances/${address}`;
+  if (!nextKey) {
+    return path;
+  }
+
+  const params = new URLSearchParams({ "pagination.key": nextKey });
+  return `${path}?${params.toString()}`;
+}
+
+async function fetchAllBalances(
+  base: string,
+  address: string,
+): Promise<CoinBalance[]> {
+  const balances: CoinBalance[] = [];
+  let nextKey: string | null | undefined;
+
+  do {
+    const response = await fetchWithTimeout(buildBalancesUrl(base, address, nextKey));
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = (await response.json()) as BalancesResponse;
+    balances.push(...(data.balances ?? []));
+    nextKey = data.pagination?.next_key;
+  } while (nextKey);
+
+  return balances;
+}
+
 export async function queryBalances(
   restEndpoints: string[],
   address: string,
@@ -39,18 +74,11 @@ export async function queryBalances(
 
   for (const endpoint of restEndpoints) {
     const base = normalizeRestUrl(endpoint);
-    const url = `${base}/cosmos/bank/v1beta1/balances/${address}`;
 
     try {
-      const response = await fetchWithTimeout(url);
-      if (!response.ok) {
-        errors.push(`${endpoint}: HTTP ${response.status}`);
-        continue;
-      }
-
-      const data = (await response.json()) as BalancesResponse;
+      const balances = await fetchAllBalances(base, address);
       return {
-        balances: data.balances ?? [],
+        balances,
         restEndpoint: endpoint,
       };
     } catch (error) {
