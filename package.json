@@ -1,0 +1,22 @@
+{
+  "name": "ibc-escrow-report",
+  "version": "1.0.0",
+  "description": "CLI to generate HTML reports of IBC escrow balances on remote Cosmos chains",
+  "type": "module",
+  "bin": {
+    "ibc-escrow-report": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "@cosmjs/encoding": "^0.32.4",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
