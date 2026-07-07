@@ -20,9 +20,9 @@ function isPreferredActiveTransferChannel(
   }
 
   const status = channel.tags?.status;
-  const preferred = channel.tags?.preferred;
+  // const preferred = channel.tags?.preferred;
 
-  return status === "ACTIVE" && preferred === true;
+  return status === "ACTIVE";
 }
 
 export async function discoverConnections(
