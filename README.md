@@ -52,6 +52,9 @@ ibc-escrow-report --chain <name> [options]
 | `--output <path>` | `ibc-escrow-<chain>-<date>.html` | Output HTML file path |
 | `--registry-ref <ref>` | `master` | Git ref/branch/tag for chain-registry |
 | `--concurrency <n>` | `10` | Max parallel balance queries against remote chains |
+| `--exclude <names>` | _(built-in list only)_ | Extra remote `chain_name`s to skip, comma-separated |
+
+A built-in denylist of permanently shut-down networks is always applied during IBC discovery (see `src/registry/excluded-networks.ts`). Use `--exclude` to skip additional remotes for a single run.
 
 ### Examples
 
@@ -71,6 +74,12 @@ Use a specific chain-registry ref and lower concurrency:
 
 ```bash
 ibc-escrow-report --chain cosmoshub --registry-ref v16.1.0 --concurrency 5
+```
+
+Skip extra remote chains on top of the built-in exclude list:
+
+```bash
+ibc-escrow-report --chain noble --exclude stargaze,migaloo
 ```
 
 Progress and summary are printed to **stderr**; the HTML file is the only file output:

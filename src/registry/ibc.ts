@@ -7,6 +7,19 @@ function matchesTarget(filename: string, targetChain: string): boolean {
   return chainA === targetChain || chainB === targetChain;
 }
 
+/** Other half of an `_IBC/{a}-{b}.json` pair relative to the target chain. */
+function remoteNameFromFilename(filename: string, targetChain: string): string | null {
+  const base = filename.replace(/\.json$/, "");
+  const [chainA, chainB] = base.split("-");
+  if (chainA === targetChain) {
+    return chainB ?? null;
+  }
+  if (chainB === targetChain) {
+    return chainA ?? null;
+  }
+  return null;
+}
+
 function isPreferredActiveTransferChannel(
   channel: IbcConnectionFile["channels"][number],
   remoteSide: "chain_1" | "chain_2",
@@ -19,22 +32,34 @@ function isPreferredActiveTransferChannel(
     return false;
   }
 
-  const status = channel.tags?.status;
+  // const status = channel.tags?.status;
   // const preferred = channel.tags?.preferred;
 
-  return status === "ACTIVE";
+  // return status === "ACTIVE";
+  return true;
 }
 
 export async function discoverConnections(
   client: RegistryClient,
   targetChain: string,
+  excludedNetworks: ReadonlySet<string> = new Set(),
 ): Promise<IbcConnection[]> {
   const filenames = await client.listIbcFiles();
   const matching = filenames.filter((name) => matchesTarget(name, targetChain));
 
   const connections = new Map<string, IbcConnection>();
+  const loggedExclusions = new Set<string>();
 
   for (const filename of matching) {
+    const remoteFromName = remoteNameFromFilename(filename, targetChain);
+    if (remoteFromName && excludedNetworks.has(remoteFromName.toLowerCase())) {
+      if (!loggedExclusions.has(remoteFromName)) {
+        loggedExclusions.add(remoteFromName);
+        console.error(`Excluding remote network: ${remoteFromName}`);
+      }
+      continue;
+    }
+
     let data: IbcConnectionFile;
     try {
       data = await client.fetchJson<IbcConnectionFile>(`_IBC/${filename}`);
@@ -54,7 +79,14 @@ export async function discoverConnections(
     const remoteSide = targetIsChain1 ? "chain_2" : "chain_1";
     const localSide = targetIsChain1 ? "chain_1" : "chain_2";
     const remoteMeta = data[remoteSide];
-    const localMeta = data[localSide];
+
+    if (excludedNetworks.has(remoteMeta.chain_name.toLowerCase())) {
+      if (!loggedExclusions.has(remoteMeta.chain_name)) {
+        loggedExclusions.add(remoteMeta.chain_name);
+        console.error(`Excluding remote network: ${remoteMeta.chain_name}`);
+      }
+      continue;
+    }
 
     for (const channel of data.channels) {
       if (!isPreferredActiveTransferChannel(channel, remoteSide, localSide)) {

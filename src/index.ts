@@ -6,6 +6,10 @@ import { mapWithConcurrency, queryBalances } from "./balance/client.js";
 import { getTransferEscrowAddress } from "./escrow/address.js";
 import { generateHtmlReport } from "./report/html.js";
 import { getRestEndpoints, loadAssetList, loadChain, loadTargetChain } from "./registry/chain.js";
+import {
+  buildExcludedNetworkSet,
+  parseExcludeOption,
+} from "./registry/excluded-networks.js";
 import { discoverConnections } from "./registry/ibc.js";
 import { RegistryClient } from "./registry/client.js";
 import type { EscrowRow, IbcConnection } from "./types.js";
@@ -16,6 +20,7 @@ interface CliOptions {
   output?: string;
   registryRef: string;
   concurrency: string;
+  exclude?: string;
 }
 
 function defaultOutputPath(chainName: string): string {
@@ -86,8 +91,15 @@ async function run(options: CliOptions): Promise<void> {
   console.error(`Loading target chain: ${targetChain}`);
   const target = await loadTargetChain(client, targetChain);
 
+  const excluded = buildExcludedNetworkSet(parseExcludeOption(options.exclude));
+  if (excluded.size > 0) {
+    console.error(
+      `Excluding ${excluded.size} remote network(s) from discovery (built-in + --exclude)`,
+    );
+  }
+
   console.error("Discovering IBC connections from chain-registry...");
-  const connections = await discoverConnections(client, targetChain);
+  const connections = await discoverConnections(client, targetChain, excluded);
 
   if (connections.length === 0) {
     throw new Error(`No preferred ACTIVE transfer IBC connections found for "${targetChain}".`);
@@ -132,6 +144,10 @@ program
   .option("--output <path>", "Output HTML file path")
   .option("--registry-ref <ref>", "chain-registry git ref", "master")
   .option("--concurrency <n>", "Max parallel remote balance queries", "10")
+  .option(
+    "--exclude <names>",
+    "Comma-separated remote chain_name values to skip (merged with built-in list)",
+  )
   .action(async (options: CliOptions) => {
     try {
       await run(options);
