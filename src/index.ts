@@ -4,6 +4,10 @@ import { writeFile } from "node:fs/promises";
 import { Command } from "commander";
 import { mapWithConcurrency, queryBalances } from "./balance/client.js";
 import { getTransferEscrowAddress } from "./escrow/address.js";
+import {
+  preferRestEndpoint,
+  queryClientStatus,
+} from "./ibc/client-status.js";
 import { generateHtmlReport } from "./report/html.js";
 import { getRestEndpoints, loadAssetList, loadChain, loadTargetChain } from "./registry/chain.js";
 import {
@@ -12,7 +16,7 @@ import {
 } from "./registry/excluded-networks.js";
 import { discoverConnections } from "./registry/ibc.js";
 import { RegistryClient } from "./registry/client.js";
-import type { EscrowRow, IbcConnection } from "./types.js";
+import type { EscrowRow, IbcClientStatus, IbcConnection } from "./types.js";
 import { formatBalances } from "./utils/denom.js";
 
 interface CliOptions {
@@ -37,14 +41,69 @@ function errorRow(connection: IbcConnection, error: unknown): EscrowRow {
     localChannelId: connection.localChannelId,
     escrowAddress: "—",
     balances: [],
+    remoteClientId: connection.remoteClientId,
+    remoteClientStatus: "Unknown",
+    localClientId: connection.localClientId,
+    localClientStatus: "Unknown",
     status: "error",
     error: message,
+  };
+}
+
+async function resolveClientStatus(
+  restEndpoints: string[],
+  clientId: string,
+  preferredEndpoint?: string,
+): Promise<{
+  status: IbcClientStatus;
+  clientId: string;
+  error?: string;
+}> {
+  try {
+    const result = await queryClientStatus(
+      preferRestEndpoint(restEndpoints, preferredEndpoint),
+      clientId,
+    );
+    return {
+      status: result.status,
+      clientId: result.clientId,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      status: "Unknown",
+      clientId,
+      error: message,
+    };
+  }
+}
+
+function applyClientStatuses(
+  remote: { status: IbcClientStatus; clientId: string; error?: string },
+  local: { status: IbcClientStatus; clientId: string; error?: string },
+): Pick<
+  EscrowRow,
+  | "remoteClientStatus"
+  | "remoteClientId"
+  | "remoteClientStatusError"
+  | "localClientStatus"
+  | "localClientId"
+  | "localClientStatusError"
+> {
+  return {
+    remoteClientStatus: remote.status,
+    remoteClientId: remote.clientId,
+    remoteClientStatusError: remote.error,
+    localClientStatus: local.status,
+    localClientId: local.clientId,
+    localClientStatusError: local.error,
   };
 }
 
 async function buildEscrowRow(
   client: RegistryClient,
   connection: IbcConnection,
+  targetRestEndpoints: string[],
 ): Promise<EscrowRow> {
   let remoteChain;
   try {
@@ -61,8 +120,15 @@ async function buildEscrowRow(
     remoteChain.bech32_prefix,
   );
 
+  const resolveLocalClient = () =>
+    resolveClientStatus(targetRestEndpoints, connection.localClientId);
+
   try {
     const { balances, restEndpoint } = await queryBalances(restEndpoints, escrowAddress);
+    const [remoteClient, localClient] = await Promise.all([
+      resolveClientStatus(restEndpoints, connection.remoteClientId, restEndpoint),
+      resolveLocalClient(),
+    ]);
 
     return {
       remoteChainName: connection.remoteChainName,
@@ -72,13 +138,20 @@ async function buildEscrowRow(
       escrowAddress,
       balances: formatBalances(balances, assetList),
       restEndpoint,
+      ...applyClientStatuses(remoteClient, localClient),
       status: "ok",
     };
   } catch (error) {
+    const [remoteClient, localClient] = await Promise.all([
+      resolveClientStatus(restEndpoints, connection.remoteClientId),
+      resolveLocalClient(),
+    ]);
+
     return {
       ...errorRow(connection, error),
       remotePrettyName: remoteChain.pretty_name ?? connection.remoteChainName,
       escrowAddress,
+      ...applyClientStatuses(remoteClient, localClient),
     };
   }
 }
@@ -105,11 +178,14 @@ async function run(options: CliOptions): Promise<void> {
     throw new Error(`No preferred ACTIVE transfer IBC connections found for "${targetChain}".`);
   }
 
-  console.error(`Found ${connections.length} connections. Querying remote escrow balances...`);
+  const targetRestEndpoints = getRestEndpoints(target);
+  console.error(
+    `Found ${connections.length} connections. Querying remote escrow balances and client status...`,
+  );
 
   let completed = 0;
   const rows = await mapWithConcurrency(connections, concurrency, async (connection) => {
-    const row = await buildEscrowRow(client, connection);
+    const row = await buildEscrowRow(client, connection, targetRestEndpoints);
     completed += 1;
     console.error(`[${completed}/${connections.length}] ${connection.remoteChainName} (${row.status})`);
     return row;

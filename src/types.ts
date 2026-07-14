@@ -14,17 +14,20 @@ export interface IbcChannel {
   };
 }
 
+export interface IbcConnectionFileChain {
+  chain_name: string;
+  chain_id?: string;
+  client_id: string;
+  connection_id?: string;
+}
+
 export interface IbcConnectionFile {
-  chain_1: {
-    chain_name: string;
-    chain_id: string;
-  };
-  chain_2: {
-    chain_name: string;
-    chain_id: string;
-  };
+  chain_1: IbcConnectionFileChain;
+  chain_2: IbcConnectionFileChain;
   channels: IbcChannel[];
 }
+
+export type IbcClientStatus = "Active" | "Expired" | "Frozen" | "Unknown";
 
 export interface ChainRegistryChain {
   chain_name: string;
@@ -58,6 +61,8 @@ export interface IbcConnection {
   remoteChainId: string;
   remoteChannelId: string;
   localChannelId: string;
+  remoteClientId: string;
+  localClientId: string;
   portId: string;
 }
 
@@ -81,6 +86,12 @@ export interface EscrowRow {
   escrowAddress: string;
   balances: FormattedBalance[];
   restEndpoint?: string;
+  remoteClientStatus?: IbcClientStatus;
+  remoteClientId?: string;
+  remoteClientStatusError?: string;
+  localClientStatus?: IbcClientStatus;
+  localClientId?: string;
+  localClientStatusError?: string;
   status: "ok" | "error";
   error?: string;
 }

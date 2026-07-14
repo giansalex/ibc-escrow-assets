@@ -79,6 +79,7 @@ export async function discoverConnections(
     const remoteSide = targetIsChain1 ? "chain_2" : "chain_1";
     const localSide = targetIsChain1 ? "chain_1" : "chain_2";
     const remoteMeta = data[remoteSide];
+    const localMeta = data[localSide];
 
     if (excludedNetworks.has(remoteMeta.chain_name.toLowerCase())) {
       if (!loggedExclusions.has(remoteMeta.chain_name)) {
@@ -93,15 +94,24 @@ export async function discoverConnections(
         continue;
       }
 
+      if (!remoteMeta.client_id || !localMeta.client_id) {
+        console.warn(
+          `Skipping ${filename} channel ${channel[remoteSide].channel_id}: missing client_id (remote=${remoteMeta.client_id ?? "—"}, local=${localMeta.client_id ?? "—"})`,
+        );
+        continue;
+      }
+
       const remoteChannelId = channel[remoteSide].channel_id;
       const localChannelId = channel[localSide].channel_id;
       const key = `${remoteMeta.chain_name}:${remoteChannelId}`;
 
       connections.set(key, {
         remoteChainName: remoteMeta.chain_name,
-        remoteChainId: remoteMeta.chain_id,
+        remoteChainId: remoteMeta.chain_id ?? "",
         remoteChannelId,
         localChannelId,
+        remoteClientId: remoteMeta.client_id,
+        localClientId: localMeta.client_id,
         portId: channel[remoteSide].port_id,
       });
     }
