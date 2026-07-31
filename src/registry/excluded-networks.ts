@@ -19,6 +19,8 @@ export const DEFAULT_EXCLUDED_NETWORKS: readonly string[] = [
   "joltify",
   "int3face",
   "furya",
+  "vidulum",
+  "umee",
 ];
 
 export function buildExcludedNetworkSet(extra: readonly string[] = []): Set<string> {
